@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Shops — SuperMall Admin</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">Super<span>Mall</span></div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html"  class="nav-link"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="shops.html"      class="nav-link active"><span class="nav-icon">🏪</span> Shops</a>
+      <a href="products.html"   class="nav-link"><span class="nav-icon">📦</span> Products</a>
+      <a href="offers.html"     class="nav-link"><span class="nav-icon">🏷️</span> Offers</a>
+      <a href="categories.html" class="nav-link"><span class="nav-icon">🗂️</span> Categories & Floors</a>
+      <a href="reports.html"    class="nav-link"><span class="nav-icon">📈</span> Analytics</a>
+      <a href="../user/browse.html" class="nav-link"><span class="nav-icon">👁️</span> User View</a>
+    </nav>
+  </aside>
+  <div class="main-wrap">
+    <header class="topbar">
+      <span class="topbar-title">Manage Shops</span>
+      <div class="topbar-right">
+        <span class="topbar-user" id="nav-user"></span>
+        <button class="btn btn-ghost btn-sm" id="nav-logout">Logout</button>
+      </div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>Shops</h1><p>Create and manage all shops in the mall.</p></div>
+        <button class="btn btn-primary" onclick="openForm()">+ Add Shop</button>
+      </div>
+
+      <div class="filter-bar">
+        <input type="text" id="q" class="form-control search-box" placeholder="🔍 Search shops…" oninput="filter()"/>
+        <select id="f-floor" class="form-control" onchange="filter()"><option value="">All Floors</option></select>
+        <select id="f-cat"   class="form-control" onchange="filter()"><option value="">All Categories</option></select>
+        <select id="f-status" class="form-control" onchange="filter()"><option value="">All Status</option><option value="true">Active</option><option value="false">Inactive</option></select>
+      </div>
+
+      <div class="card"><div style="padding:0" id="tbl"></div></div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal" style="display:none">
+  <div class="modal-overlay modal-show">
+    <div class="modal-box modal-wide">
+      <div class="modal-header"><h3 class="modal-title" id="modal-title">Add Shop</h3><button class="modal-close" onclick="closeForm()">✕</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="eid"/>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Shop Name *</label><input id="f-name" class="form-control" required/></div>
+          <div class="form-group"><label class="form-label">Unit Number *</label><input id="f-unit" class="form-control" required/></div>
+          <div class="form-group"><label class="form-label">Category *</label><select id="f-category" class="form-control"></select></div>
+          <div class="form-group"><label class="form-label">Floor *</label><select id="f-floorsel" class="form-control"></select></div>
+          <div class="form-group"><label class="form-label">Owner Email</label><input id="f-owner" class="form-control" type="email"/></div>
+          <div class="form-group"><label class="form-label">Phone</label><input id="f-phone" class="form-control"/></div>
+          <div class="form-group"><label class="form-label">Opens At</label><input id="f-open" class="form-control" type="time" value="10:00"/></div>
+          <div class="form-group"><label class="form-label">Closes At</label><input id="f-close" class="form-control" type="time" value="22:00"/></div>
+          <div class="form-group form-full"><label class="form-label">Image URL (Unsplash or any direct image link)</label>
+            <input id="f-image" class="form-control" placeholder="https://images.unsplash.com/photo-…?w=400&q=80"/>
+            <div id="img-preview" style="margin-top:.5rem"></div>
+          </div>
+          <div class="form-group form-full"><label class="form-label">Description</label><textarea id="f-desc" class="form-control" rows="2"></textarea></div>
+          <div class="form-group"><label class="form-label">Tags (comma separated)</label><input id="f-tags" class="form-control" placeholder="fashion, clothing"/></div>
+          <div class="form-group"><label class="form-label">Status</label>
+            <select id="f-active" class="form-control"><option value="true">Active</option><option value="false">Inactive</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeForm()">Cancel</button>
+        <button class="btn btn-primary" onclick="save()">Save Shop</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="../js/logger.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/data-services.js"></script>
+<script>
+if(!Auth.requireAuth("admin")) throw 0;
+Auth.initNav();
+
+let all = [];
+
+// Image preview on URL input
+document.getElementById("f-image").addEventListener("input", function(){
+  const v = this.value.trim();
+  document.getElementById("img-preview").innerHTML = v
+    ? `<img src="${v}" style="height:80px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'" />`
+    : "";
+});
+
+async function load(){
+  all = await ShopService.getAll();
+  render(all);
+  const cats   = await CategoryService.getAll();
+  const floors = await CategoryService.getUniqueFloors();
+  [document.getElementById("f-floor"), document.getElementById("f-floorsel")].forEach(el=>{
+    floors.forEach(f=>el.innerHTML+=`<option value="${f}">${f}</option>`);
+  });
+  [document.getElementById("f-cat"), document.getElementById("f-category")].forEach(el=>{
+    cats.forEach(c=>el.innerHTML+=`<option value="${c.name}">${c.icon||""} ${c.name}</option>`);
+  });
+}
+
+function render(items){
+  UI.buildTable("tbl",
+    [{key:"image",label:"Photo",render:s=>`<div style="width:44px;height:36px;border-radius:6px;overflow:hidden;background:var(--bg)">${s.image?`<img src="${s.image}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"/>`:"🏪"}</div>`},
+     {key:"name",label:"Name",render:s=>`<strong>${s.name}</strong><br/><small style="color:var(--text-light)">${s.description?.slice(0,50)||""}</small>`},
+     {key:"category",label:"Category"},
+     {key:"floor",label:"Floor"},
+     {key:"unit",label:"Unit"},
+     {key:"phone",label:"Phone"},
+     {key:"active",label:"Status",render:s=>UI.statusBadge(s.active)}],
+    items,
+    [{label:"Edit",icon:"✏️",className:"btn-edit",fn:"editShop"},
+     {label:"Delete",icon:"🗑️",className:"btn-delete",fn:"deleteShop"}]
+  );
+}
+
+function filter(){
+  const q=document.getElementById("q").value.toLowerCase();
+  const fl=document.getElementById("f-floor").value;
+  const ca=document.getElementById("f-cat").value;
+  const st=document.getElementById("f-status").value;
+  render(all.filter(s=>
+    (!q||s.name.toLowerCase().includes(q)||(s.unit||"").toLowerCase().includes(q))
+    &&(!fl||s.floor===fl)&&(!ca||s.category===ca)&&(st===""||String(s.active)===st)
+  ));
+}
+
+function openForm(id=null){
+  document.getElementById("modal-title").textContent = id?"Edit Shop":"Add Shop";
+  document.getElementById("eid").value = id||"";
+  if(!id){ document.querySelectorAll("#modal .form-control").forEach(e=>e.value=""); document.getElementById("img-preview").innerHTML=""; }
+  document.getElementById("modal").style.display="block";
+}
+
+async function editShop(id){
+  const s = all.find(x=>x.id===id);
+  if(!s) return;
+  document.getElementById("modal-title").textContent = "Edit Shop";
+  document.getElementById("eid").value = id;
+  document.getElementById("f-name").value     = s.name||"";
+  document.getElementById("f-unit").value     = s.unit||"";
+  document.getElementById("f-category").value = s.category||"";
+  document.getElementById("f-floorsel").value = s.floor||"";
+  document.getElementById("f-owner").value    = s.owner||"";
+  document.getElementById("f-phone").value    = s.phone||"";
+  document.getElementById("f-open").value     = s.open||"10:00";
+  document.getElementById("f-close").value    = s.close||"22:00";
+  document.getElementById("f-image").value    = s.image||"";
+  document.getElementById("f-desc").value     = s.description||"";
+  document.getElementById("f-tags").value     = (s.tags||[]).join(", ");
+  document.getElementById("f-active").value   = String(s.active!==false);
+  document.getElementById("img-preview").innerHTML = s.image?`<img src="${s.image}" style="height:80px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'"/>`: "";
+  document.getElementById("modal").style.display="block";
+}
+
+function closeForm(){ document.getElementById("modal").style.display="none"; }
+
+async function save(){
+  const id = document.getElementById("eid").value;
+  const data = {
+    name:        document.getElementById("f-name").value.trim(),
+    unit:        document.getElementById("f-unit").value.trim(),
+    category:    document.getElementById("f-category").value,
+    floor:       document.getElementById("f-floorsel").value,
+    owner:       document.getElementById("f-owner").value.trim(),
+    phone:       document.getElementById("f-phone").value.trim(),
+    open:        document.getElementById("f-open").value,
+    close:       document.getElementById("f-close").value,
+    image:       document.getElementById("f-image").value.trim(),
+    description: document.getElementById("f-desc").value.trim(),
+    tags:        document.getElementById("f-tags").value.split(",").map(t=>t.trim()).filter(Boolean),
+    active:      document.getElementById("f-active").value==="true"
+  };
+  if(!data.name||!data.unit){ UI.toast("Name and unit are required","warning"); return; }
+  try{
+    id ? await ShopService.update(id,data) : await ShopService.create(data);
+    UI.toast(id?"Shop updated ✅":"Shop created 🎉","success");
+    closeForm(); load();
+  } catch(e){ UI.toast("Error: "+e.message,"error"); }
+}
+
+function deleteShop(id){
+  UI.confirm("Delete this shop? All associated data will remain.",async()=>{
+    await ShopService.remove(id); UI.toast("Deleted","success"); load();
+  });
+}
+
+load();
+</script>
+</body>
+</html>

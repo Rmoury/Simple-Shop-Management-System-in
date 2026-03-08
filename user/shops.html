@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Shops — SuperMall</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<nav class="user-nav">
+  <div class="user-nav-logo">Super<span>Mall</span></div>
+  <div class="user-nav-links">
+    <a href="browse.html"   class="nav-pill">🏬 Browse</a>
+    <a href="shops.html"    class="nav-pill active">🏪 Shops</a>
+    <a href="compare.html"  class="nav-pill">⚖️ Compare</a>
+    <a href="wishlist.html" class="nav-pill">❤️ Wishlist</a>
+    <a href="floormap.html" class="nav-pill">🗺️ Floor Map</a>
+    <span class="topbar-user" id="nav-user" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border-color:rgba(255,255,255,.15);font-size:.78rem"></span>
+    <button class="btn btn-ghost btn-sm" id="nav-logout" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2)">Logout</button>
+  </div>
+</nav>
+
+<div class="hero-section" style="padding:2rem">
+  <h1>🏪 Shop <span>Directory</span></h1>
+  <p>Explore all shops, browse their products and current offers.</p>
+</div>
+
+<div class="browse-body">
+  <div class="filter-bar" style="margin-bottom:1.25rem">
+    <input type="text" id="q" class="form-control search-box" placeholder="🔍 Search shops…" oninput="filter()"/>
+    <select id="f-cat"   class="form-control" onchange="filter()"><option value="">All Categories</option></select>
+    <select id="f-floor" class="form-control" onchange="filter()"><option value="">All Floors</option></select>
+    <select id="f-status" class="form-control" onchange="filter()"><option value="">All</option><option value="true">Open Now</option></select>
+  </div>
+  <div id="shops-wrap"></div>
+</div>
+
+<!-- Shop Detail Modal -->
+<div id="shop-modal" style="display:none">
+  <div class="modal-overlay modal-show">
+    <div class="modal-box modal-wide">
+      <div class="modal-header"><h3 class="modal-title" id="sm-name">Shop</h3><button class="modal-close" onclick="closeShop()">✕</button></div>
+      <div class="modal-body" id="sm-body"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="../js/logger.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/data-services.js"></script>
+<script>
+if(!Auth.requireAuth()) throw 0;
+Auth.initNav();
+let all=[];
+
+async function load(){
+  document.getElementById("shops-wrap").innerHTML=`<div class="loader-wrap"><div class="loader"></div></div>`;
+  all = await ShopService.getAll();
+  const cats   = await CategoryService.getAll();
+  const floors = await CategoryService.getUniqueFloors();
+  cats.forEach(c=>document.getElementById("f-cat").innerHTML+=`<option value="${c.name}">${c.icon||""} ${c.name}</option>`);
+  floors.forEach(f=>document.getElementById("f-floor").innerHTML+=`<option value="${f}">${f}</option>`);
+
+  // Check URL param
+  const id = new URLSearchParams(location.search).get("id");
+  if(id) openShop(id);
+
+  render(all);
+}
+
+function render(items){
+  if(!items.length){ document.getElementById("shops-wrap").innerHTML=`<div class="empty-state"><span>🔍</span><p>No shops found.</p></div>`; return; }
+  document.getElementById("shops-wrap").innerHTML=`<div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+    ${items.map(s=>`
+      <div class="shop-card" onclick="openShop('${s.id}')">
+        <div style="height:180px;overflow:hidden;position:relative">
+          ${s.image
+            ?`<img src="${s.image}" alt="${s.name}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.outerHTML='<div class=\\'shop-img-placeholder\\'>${s.name.charAt(0)}</div>'"/>`
+            :`<div class="shop-img-placeholder">${s.name.charAt(0)}</div>`}
+          <div style="position:absolute;top:.6rem;right:.6rem">${UI.statusBadge(s.active)}</div>
+        </div>
+        <div class="shop-card-body">
+          <div class="shop-card-name">${s.name}</div>
+          <div class="shop-card-desc">${s.description||""}</div>
+          <div class="shop-card-meta">
+            <span class="shop-tag">🏢 ${s.floor}</span>
+            <span class="shop-tag">📍 ${s.unit}</span>
+            <span class="shop-tag">🗂️ ${s.category}</span>
+          </div>
+        </div>
+        <div class="shop-card-footer">
+          <span>${UI.stars(s.rating||4.0)} <span style="font-size:.72rem;color:var(--text-light)">(${s.reviewCount||0})</span></span>
+          <span style="font-size:.78rem;color:var(--text-mid)">🕐 ${s.open||"10:00"}–${s.close||"22:00"}</span>
+        </div>
+      </div>`).join("")}
+  </div>`;
+}
+
+function filter(){
+  const q  = document.getElementById("q").value.toLowerCase();
+  const ca = document.getElementById("f-cat").value;
+  const fl = document.getElementById("f-floor").value;
+  const st = document.getElementById("f-status").value;
+  render(all.filter(s=>
+    (!q||s.name.toLowerCase().includes(q)||(s.description||"").toLowerCase().includes(q))
+    &&(!ca||s.category===ca)&&(!fl||s.floor===fl)&&(st===""||String(s.active)===st)
+  ));
+}
+
+async function openShop(id){
+  const [shop, prods, offers] = await Promise.all([ShopService.getById(id), ProductService.getByShop(id), OfferService.getByShop(id)]);
+  if(!shop) return;
+  document.getElementById("sm-name").textContent = shop.name;
+  document.getElementById("sm-body").innerHTML = `
+    <!-- Shop header -->
+    <div style="display:flex;gap:1.25rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:1.25rem">
+      <div style="width:120px;height:90px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--bg)">
+        ${shop.image?`<img src="${shop.image}" style="width:100%;height:100%;object-fit:cover" onerror="this.outerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem\\'>🏪</div>'/>`:"<div style='display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem'>🏪</div>"}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:.83rem;color:var(--text-mid);margin-bottom:.4rem">${shop.description||""}</div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <span class="shop-tag">🏢 ${shop.floor} · ${shop.unit}</span>
+          <span class="shop-tag">🗂️ ${shop.category}</span>
+          <span class="shop-tag">📞 ${shop.phone||"N/A"}</span>
+          <span class="shop-tag">🕐 ${shop.open||"10:00"} – ${shop.close||"22:00"}</span>
+        </div>
+        <div style="margin-top:.5rem">${UI.stars(shop.rating||4.0)} <span style="font-size:.72rem;color:var(--text-light)">${shop.reviewCount||0} reviews</span> ${UI.statusBadge(shop.active)}</div>
+      </div>
+    </div>
+
+    <!-- Offers -->
+    ${offers.length?`
+      <div style="font-family:var(--font-h);font-size:.9rem;font-weight:700;margin-bottom:.65rem">🏷️ Current Offers</div>
+      <div style="display:flex;gap:.75rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:1.1rem">
+        ${offers.map(o=>`<div class="offer-card" style="min-width:180px"><div class="offer-disc">${o.discount} OFF</div><div class="offer-title">${o.title}</div><span class="offer-code">${o.code||"No Code"}</span></div>`).join("")}
+      </div>`:""}
+
+    <!-- Products -->
+    <div style="font-family:var(--font-h);font-size:.9rem;font-weight:700;margin-bottom:.65rem">📦 Products (${prods.length})</div>
+    ${prods.length?`
+      <div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">
+        ${prods.map(p=>{
+          const sp=p.discountPrice||p.price;
+          const pct=p.discountPrice&&p.price>p.discountPrice?Math.round((1-p.discountPrice/p.price)*100):0;
+          return `<div class="product-card">
+            <div class="product-card-img">
+              ${p.image?`<img src="${p.image}" alt="${p.name}" class="prod-img" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/><div class="img-placeholder" style="display:none">🛍️</div>`:`<div class="img-placeholder">🛍️</div>`}
+            </div>
+            <div class="product-card-body">
+              <div class="product-card-name" title="${p.name}">${p.name}</div>
+              <div class="product-card-price">
+                <span class="price-now">${UI.currency(sp)}</span>
+                ${p.discountPrice?`<span class="price-was">${UI.currency(p.price)}</span>`:""}
+                ${pct>0?`<span class="price-save">${pct}% OFF</span>`:""}
+              </div>
+              <button class="btn-cart" style="width:100%;margin-top:.5rem" onclick="addToCartInModal('${p.id}')">🛒 Add</button>
+            </div>
+          </div>`;}).join("")}
+      </div>`
+    :"<p style='color:var(--text-light);font-size:.83rem;padding:1rem 0'>No products listed yet.</p>"}`;
+  document.getElementById("shop-modal").style.display="block";
+  Logger.info("shops","openShop",{id});
+}
+
+function closeShop(){ document.getElementById("shop-modal").style.display="none"; }
+
+async function addToCartInModal(id){
+  const p = (await ProductService.getAll()).find(x=>x.id===id);
+  if(!p) return;
+  CartService.add(p);
+  UI.toast(`🛒 ${p.name} added to cart!`,"success");
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Compare Products — SuperMall</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<nav class="user-nav">
+  <div class="user-nav-logo">Super<span>Mall</span></div>
+  <div class="user-nav-links">
+    <a href="browse.html"   class="nav-pill">🏬 Browse</a>
+    <a href="shops.html"    class="nav-pill">🏪 Shops</a>
+    <a href="compare.html"  class="nav-pill active">⚖️ Compare</a>
+    <a href="wishlist.html" class="nav-pill">❤️ Wishlist</a>
+    <a href="floormap.html" class="nav-pill">🗺️ Floor Map</a>
+    <span class="topbar-user" id="nav-user" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border-color:rgba(255,255,255,.15);font-size:.78rem"></span>
+    <button class="btn btn-ghost btn-sm" id="nav-logout" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2)">Logout</button>
+  </div>
+</nav>
+
+<div class="browse-body">
+  <div class="page-header"><div><h1>⚖️ Compare Products</h1><p>Select any two products to compare side by side.</p></div></div>
+
+  <div class="card" style="margin-bottom:1.25rem">
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div class="form-group" style="margin:0"><label class="form-label">Product A</label><select id="sel-a" class="form-control"><option value="">— Select Product —</option></select></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Product B</label><select id="sel-b" class="form-control"><option value="">— Select Product —</option></select></div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:1rem" onclick="compare()">Compare Now ⚖️</button>
+    </div>
+  </div>
+
+  <div id="result"></div>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="../js/logger.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/data-services.js"></script>
+<script>
+if(!Auth.requireAuth()) throw 0;
+Auth.initNav();
+
+async function load(){
+  const prods = await ProductService.getAll();
+  prods.forEach(p=>{
+    const opt = `<option value="${p.id}">${p.name} — ${p.shopName} (${UI.currency(p.discountPrice||p.price)})</option>`;
+    document.getElementById("sel-a").innerHTML += opt;
+    document.getElementById("sel-b").innerHTML += opt;
+  });
+}
+
+async function compare(){
+  const ia=document.getElementById("sel-a").value, ib=document.getElementById("sel-b").value;
+  if(!ia||!ib){ UI.toast("Select both products","warning"); return; }
+  if(ia===ib){ UI.toast("Please select different products","warning"); return; }
+  const [a,b] = await ProductService.compare(ia,ib);
+  if(!a||!b){ UI.toast("Could not load products","error"); return; }
+  const pa=a.discountPrice||a.price, pb=b.discountPrice||b.price;
+
+  const rows=[
+    ["Category", a.category||"—", b.category||"—"],
+    ["Shop",     a.shopName||"—", b.shopName||"—"],
+    ["MRP",      UI.currency(a.price), UI.currency(b.price)],
+    ["Sale Price", a.discountPrice?`<strong style="color:var(--orange)">${UI.currency(a.discountPrice)}</strong>`:"—", b.discountPrice?`<strong style="color:var(--orange)">${UI.currency(b.discountPrice)}</strong>`:"—"],
+    ["Best Price", `<span class="${pa<=pb?'compare-better':'compare-worse'}">${UI.currency(pa)}${pa<pb?" ✅":""}</span>`, `<span class="${pb<=pa?'compare-better':'compare-worse'}">${UI.currency(pb)}${pb<pa?" ✅":""}</span>`],
+    ["Savings",  a.discountPrice?`<span class="compare-better">Save ${UI.currency(a.price-a.discountPrice)}</span>`:"—", b.discountPrice?`<span class="compare-better">Save ${UI.currency(b.price-b.discountPrice)}</span>`:"—"],
+    ["Rating",   `${UI.stars(a.rating||4)} (${a.reviewCount||0})`, `${UI.stars(b.rating||4)} (${b.reviewCount||0})`],
+    ["Stock",    a.stock>0?`<span class="badge badge-success">${a.stock} in stock</span>`:`<span class="badge badge-danger">Out of stock</span>`, b.stock>0?`<span class="badge badge-success">${b.stock} in stock</span>`:`<span class="badge badge-danger">Out of stock</span>`],
+    ["Featured", a.featured?"⭐ Yes":"No", b.featured?"⭐ Yes":"No"],
+    ["Description", a.description||"—", b.description||"—"]
+  ];
+
+  document.getElementById("result").innerHTML=`
+    <div class="card">
+      <div class="compare-wrap">
+        <div style="background:var(--bg);padding:1rem;border-bottom:1px solid var(--border);font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--text-mid)">Feature</div>
+        <div class="compare-head">
+          ${a.image?`<img src="${a.image}" style="width:80px;height:60px;object-fit:cover;border-radius:8px;margin:.5rem auto" onerror="this.style.display='none'"/>`:""}
+          ${a.name}
+        </div>
+        <div class="compare-head">
+          ${b.image?`<img src="${b.image}" style="width:80px;height:60px;object-fit:cover;border-radius:8px;margin:.5rem auto" onerror="this.style.display='none'"/>`:""}
+          ${b.name}
+        </div>
+        ${rows.map(([l,va,vb])=>`
+          <div class="compare-lbl">${l}</div>
+          <div class="compare-val">${va}</div>
+          <div class="compare-val">${vb}</div>`).join("")}
+      </div>
+    </div>
+    <div style="margin-top:1rem;padding:1rem;background:var(--orange-lt);border-radius:var(--radius);border-left:4px solid var(--orange)">
+      <strong>💡 Verdict:</strong> ${
+        pa<pb?`<strong>${a.name}</strong> is cheaper by <strong>${UI.currency(pb-pa)}</strong>.`:
+        pb<pa?`<strong>${b.name}</strong> is cheaper by <strong>${UI.currency(pa-pb)}</strong>.`:
+        "Both are priced the same!"
+      }
+      ${(a.rating||0)>(b.rating||0)?` And it's also <strong>better rated</strong> (${a.rating} vs ${b.rating||"?"}).`:
+        (b.rating||0)>(a.rating||0)?` But <strong>${b.name}</strong> is better rated (${b.rating} vs ${a.rating||"?"}).`:""}
+    </div>`;
+  Logger.info("compare","done",{a:a.name,b:b.name});
+}
+
+load();
+</script>
+</body>
+</html>

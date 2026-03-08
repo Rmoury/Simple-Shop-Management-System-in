@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Offers — SuperMall Admin</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">Super<span>Mall</span></div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html"  class="nav-link"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="shops.html"      class="nav-link"><span class="nav-icon">🏪</span> Shops</a>
+      <a href="products.html"   class="nav-link"><span class="nav-icon">📦</span> Products</a>
+      <a href="offers.html"     class="nav-link active"><span class="nav-icon">🏷️</span> Offers</a>
+      <a href="categories.html" class="nav-link"><span class="nav-icon">🗂️</span> Categories & Floors</a>
+      <a href="reports.html"    class="nav-link"><span class="nav-icon">📈</span> Analytics</a>
+    </nav>
+  </aside>
+  <div class="main-wrap">
+    <header class="topbar">
+      <span class="topbar-title">Manage Offers</span>
+      <div class="topbar-right">
+        <span class="topbar-user" id="nav-user"></span>
+        <button class="btn btn-ghost btn-sm" id="nav-logout">Logout</button>
+      </div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>Offers</h1><p>Create and manage promotional offers.</p></div>
+        <button class="btn btn-primary" onclick="openForm()">+ Add Offer</button>
+      </div>
+      <div class="filter-bar">
+        <input type="text" id="q" class="form-control search-box" placeholder="🔍 Search offers…" oninput="filter()"/>
+        <select id="f-shop"   class="form-control" onchange="filter()"><option value="">All Shops</option></select>
+        <select id="f-status" class="form-control" onchange="filter()"><option value="">All</option><option value="true">Active</option><option value="false">Inactive</option></select>
+      </div>
+
+      <!-- Live offer cards preview -->
+      <div style="margin-bottom:1.1rem">
+        <div style="font-family:var(--font-h);font-size:.9rem;font-weight:700;margin-bottom:.75rem;color:var(--text-mid)">LIVE OFFER CARDS PREVIEW</div>
+        <div style="display:flex;gap:.9rem;overflow-x:auto;padding-bottom:.5rem" id="offer-preview"></div>
+      </div>
+
+      <div class="card"><div style="padding:0" id="tbl"></div></div>
+    </main>
+  </div>
+</div>
+
+<div id="modal" style="display:none">
+  <div class="modal-overlay modal-show">
+    <div class="modal-box">
+      <div class="modal-header"><h3 class="modal-title" id="modal-title">Add Offer</h3><button class="modal-close" onclick="closeForm()">✕</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="eid"/>
+        <div class="form-grid">
+          <div class="form-group form-full"><label class="form-label">Offer Title *</label><input id="f-title" class="form-control"/></div>
+          <div class="form-group"><label class="form-label">Shop *</label><select id="f-shop-sel" class="form-control"></select></div>
+          <div class="form-group"><label class="form-label">Discount (e.g. 20%)</label><input id="f-disc" class="form-control"/></div>
+          <div class="form-group"><label class="form-label">Promo Code</label><input id="f-code" class="form-control"/></div>
+          <div class="form-group"><label class="form-label">Valid From</label><input id="f-from" class="form-control" type="date"/></div>
+          <div class="form-group"><label class="form-label">Valid To</label><input id="f-to" class="form-control" type="date"/></div>
+          <div class="form-group form-full"><label class="form-label">Description</label><textarea id="f-desc" class="form-control" rows="2"></textarea></div>
+          <div class="form-group"><label class="form-label">Status</label>
+            <select id="f-active" class="form-control"><option value="true">Active</option><option value="false">Inactive</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeForm()">Cancel</button>
+        <button class="btn btn-primary" onclick="save()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="../js/logger.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/data-services.js"></script>
+<script>
+if(!Auth.requireAuth("admin")) throw 0;
+Auth.initNav();
+let all=[];
+
+async function load(){
+  all = await OfferService.getAll();
+  render(all);
+  renderPreview(all.filter(o=>o.active));
+  const shops = await ShopService.getAll();
+  [document.getElementById("f-shop"),document.getElementById("f-shop-sel")].forEach(el=>{
+    shops.forEach(s=>el.innerHTML+=`<option value="${s.id}" data-name="${s.name}">${s.name}</option>`);
+  });
+}
+
+function renderPreview(offers){
+  document.getElementById("offer-preview").innerHTML = offers.length
+    ? offers.slice(0,6).map(o=>`
+        <div class="offer-card" style="min-width:190px">
+          <div class="offer-disc">${o.discount||"Sale"} OFF</div>
+          <div class="offer-title">${o.title}</div>
+          <div class="offer-shop">${o.shopName}</div>
+          <span class="offer-code">${o.code||"No Code"}</span>
+        </div>`).join("")
+    : "<p style='color:var(--text-light);font-size:.83rem'>No active offers to preview.</p>";
+}
+
+function render(items){
+  UI.buildTable("tbl",
+    [{key:"title",label:"Title",render:o=>`<strong>${o.title}</strong>`},
+     {key:"shopName",label:"Shop"},
+     {key:"discount",label:"Discount",render:o=>`<span class="badge badge-orange">${o.discount} OFF</span>`},
+     {key:"code",label:"Code",render:o=>`<code style="background:var(--bg);padding:.15rem .4rem;border-radius:4px;font-size:.78rem">${o.code||"—"}</code>`},
+     {key:"validTo",label:"Expires"},
+     {key:"active",label:"Status",render:o=>UI.statusBadge(o.active)}],
+    items,
+    [{label:"Toggle",icon:"🔁",className:"btn-toggle",fn:"toggleOffer"},
+     {label:"Edit",icon:"✏️",className:"btn-edit",fn:"editOffer"},
+     {label:"Delete",icon:"🗑️",className:"btn-delete",fn:"deleteOffer"}]
+  );
+}
+
+function filter(){
+  const q=document.getElementById("q").value.toLowerCase();
+  const sh=document.getElementById("f-shop").value;
+  const st=document.getElementById("f-status").value;
+  render(all.filter(o=>(!q||o.title.toLowerCase().includes(q)||(o.shopName||"").toLowerCase().includes(q))&&(!sh||o.shopId===sh)&&(st===""||String(o.active)===st)));
+}
+
+function openForm(){ document.getElementById("modal-title").textContent="Add Offer"; document.getElementById("eid").value=""; document.querySelectorAll("#modal .form-control").forEach(e=>e.value=""); document.getElementById("f-active").value="true"; document.getElementById("modal").style.display="block"; }
+
+async function editOffer(id){
+  const o=all.find(x=>x.id===id); if(!o) return;
+  document.getElementById("modal-title").textContent="Edit Offer";
+  document.getElementById("eid").value=id;
+  document.getElementById("f-title").value   =o.title||"";
+  document.getElementById("f-shop-sel").value=o.shopId||"";
+  document.getElementById("f-disc").value    =o.discount||"";
+  document.getElementById("f-code").value    =o.code||"";
+  document.getElementById("f-from").value    =o.validFrom||"";
+  document.getElementById("f-to").value      =o.validTo||"";
+  document.getElementById("f-desc").value    =o.description||"";
+  document.getElementById("f-active").value  =String(o.active!==false);
+  document.getElementById("modal").style.display="block";
+}
+function closeForm(){ document.getElementById("modal").style.display="none"; }
+
+async function save(){
+  const id=document.getElementById("eid").value;
+  const shopSel=document.getElementById("f-shop-sel");
+  const data={title:document.getElementById("f-title").value.trim(),shopId:shopSel.value,shopName:shopSel.options[shopSel.selectedIndex]?.dataset.name||"",discount:document.getElementById("f-disc").value.trim(),code:document.getElementById("f-code").value.trim().toUpperCase(),validFrom:document.getElementById("f-from").value,validTo:document.getElementById("f-to").value,description:document.getElementById("f-desc").value.trim(),active:document.getElementById("f-active").value==="true"};
+  if(!data.title){ UI.toast("Title required","warning"); return; }
+  try{ id?await OfferService.update(id,data):await OfferService.create(data); UI.toast(id?"Updated ✅":"Created 🎉","success"); closeForm(); load(); }
+  catch(e){ UI.toast("Error: "+e.message,"error"); }
+}
+async function toggleOffer(id){ const o=all.find(x=>x.id===id); if(!o) return; await OfferService.toggleActive(id,o.active); UI.toast(`Offer ${o.active?"deactivated":"activated"}`,"success"); load(); }
+function deleteOffer(id){ UI.confirm("Delete this offer?",async()=>{ await OfferService.remove(id); UI.toast("Deleted","success"); load(); }); }
+load();
+</script>
+</body>
+</html>

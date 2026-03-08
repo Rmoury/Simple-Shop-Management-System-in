@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Categories & Floors — SuperMall Admin</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">Super<span>Mall</span></div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html"  class="nav-link"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="shops.html"      class="nav-link"><span class="nav-icon">🏪</span> Shops</a>
+      <a href="products.html"   class="nav-link"><span class="nav-icon">📦</span> Products</a>
+      <a href="offers.html"     class="nav-link"><span class="nav-icon">🏷️</span> Offers</a>
+      <a href="categories.html" class="nav-link active"><span class="nav-icon">🗂️</span> Categories & Floors</a>
+      <a href="reports.html"    class="nav-link"><span class="nav-icon">📈</span> Analytics</a>
+    </nav>
+  </aside>
+  <div class="main-wrap">
+    <header class="topbar">
+      <span class="topbar-title">Categories & Floors</span>
+      <div class="topbar-right">
+        <span class="topbar-user" id="nav-user"></span>
+        <button class="btn btn-ghost btn-sm" id="nav-logout">Logout</button>
+      </div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>Categories & Floors</h1><p>Manage floor layouts and shop categories.</p></div>
+        <button class="btn btn-primary" onclick="openForm()">+ Add Category</button>
+      </div>
+      <div id="floor-cards" style="margin-bottom:1.25rem"></div>
+      <div class="card"><div style="padding:0" id="tbl"></div></div>
+    </main>
+  </div>
+</div>
+
+<div id="modal" style="display:none">
+  <div class="modal-overlay modal-show">
+    <div class="modal-box" style="max-width:440px">
+      <div class="modal-header"><h3 class="modal-title" id="modal-title">Add Category</h3><button class="modal-close" onclick="closeForm()">✕</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="eid"/>
+        <div class="form-group"><label class="form-label">Category Name *</label><input id="f-name" class="form-control"/></div>
+        <div class="form-group"><label class="form-label">Emoji Icon</label><input id="f-icon" class="form-control" placeholder="💻"/></div>
+        <div class="form-group"><label class="form-label">Floor *</label><input id="f-floor" class="form-control" list="fl-list" placeholder="Floor 1, Floor 2, Ground…"/>
+          <datalist id="fl-list"></datalist>
+        </div>
+        <div class="form-group"><label class="form-label">Background Color</label><input id="f-color" class="form-control" type="color" value="#dbeafe"/></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeForm()">Cancel</button>
+        <button class="btn btn-primary" onclick="save()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="../js/logger.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/data-services.js"></script>
+<script>
+if(!Auth.requireAuth("admin")) throw 0;
+Auth.initNav();
+let all=[];
+
+async function load(){
+  all = await CategoryService.getAll();
+  const shops = await ShopService.getAll();
+  const floors = [...new Set(all.map(c=>c.floor))].sort();
+
+  // Datalist for floor input
+  const dl = document.getElementById("fl-list");
+  dl.innerHTML = floors.map(f=>`<option value="${f}">`).join("");
+
+  // Floor cards
+  document.getElementById("floor-cards").innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem">
+      ${floors.map(floor=>{
+        const fCats  = all.filter(c=>c.floor===floor);
+        const fShops = shops.filter(s=>s.floor===floor);
+        return `<div class="card" style="padding:1.15rem">
+          <div style="font-family:var(--font-h);font-size:.95rem;font-weight:700;margin-bottom:.75rem">🏢 ${floor}</div>
+          <div style="display:flex;gap:1.5rem;margin-bottom:.75rem">
+            <div><div style="font-size:1.5rem;font-weight:700;color:var(--orange)">${fShops.length}</div><div style="font-size:.72rem;color:var(--text-light)">Shops</div></div>
+            <div><div style="font-size:1.5rem;font-weight:700;color:var(--teal)">${fCats.length}</div><div style="font-size:.72rem;color:var(--text-light)">Categories</div></div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+            ${fCats.map(c=>`<span class="badge badge-default">${c.icon||""} ${c.name}</span>`).join("")}
+          </div>
+        </div>`;
+      }).join("")}
+    </div>`;
+
+  UI.buildTable("tbl",
+    [{key:"icon",label:"Icon",render:c=>`<span style="font-size:1.4rem">${c.icon||"🗂️"}</span>`},
+     {key:"name",label:"Category"},
+     {key:"floor",label:"Floor",render:c=>`<span class="badge badge-blue">${c.floor}</span>`},
+     {key:"color",label:"Color",render:c=>`<span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:${c.color||'#e2e8f0'};border:1px solid var(--border)"></span>`}],
+    all,
+    [{label:"Edit",icon:"✏️",className:"btn-edit",fn:"editCat"},
+     {label:"Delete",icon:"🗑️",className:"btn-delete",fn:"deleteCat"}]
+  );
+}
+
+function openForm(){ document.getElementById("modal-title").textContent="Add Category"; document.getElementById("eid").value=""; document.getElementById("f-name").value=""; document.getElementById("f-icon").value=""; document.getElementById("f-floor").value=""; document.getElementById("f-color").value="#dbeafe"; document.getElementById("modal").style.display="block"; }
+async function editCat(id){ const c=all.find(x=>x.id===id); if(!c) return; document.getElementById("modal-title").textContent="Edit Category"; document.getElementById("eid").value=id; document.getElementById("f-name").value=c.name; document.getElementById("f-icon").value=c.icon||""; document.getElementById("f-floor").value=c.floor; document.getElementById("f-color").value=c.color||"#dbeafe"; document.getElementById("modal").style.display="block"; }
+function closeForm(){ document.getElementById("modal").style.display="none"; }
+async function save(){ const id=document.getElementById("eid").value; const data={name:document.getElementById("f-name").value.trim(),icon:document.getElementById("f-icon").value.trim(),floor:document.getElementById("f-floor").value.trim(),color:document.getElementById("f-color").value}; if(!data.name||!data.floor){UI.toast("Name and floor required","warning");return;} try{id?await CategoryService.update(id,data):await CategoryService.create(data);UI.toast(id?"Updated ✅":"Created 🎉","success");closeForm();load();}catch(e){UI.toast("Error: "+e.message,"error");} }
+function deleteCat(id){ UI.confirm("Delete this category?",async()=>{await CategoryService.remove(id);UI.toast("Deleted","success");load();}); }
+load();
+</script>
+</body>
+</html>

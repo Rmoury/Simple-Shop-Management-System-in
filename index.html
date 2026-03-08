@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>SuperMall — Login</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏬</text></svg>"/>
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-hero">
+    <div class="hero-logo">Super<span>Mall</span></div>
+    <p class="hero-tagline">India's smart mall management platform</p>
+    <div class="hero-features">
+      <div class="hero-feature"><div class="hero-fi">🏪</div><span>Manage shops, floors & categories</span></div>
+      <div class="hero-feature"><div class="hero-fi">🛍️</div><span>Rich product catalogue with images</span></div>
+      <div class="hero-feature"><div class="hero-fi">🏷️</div><span>Promotional offers & coupon codes</span></div>
+      <div class="hero-feature"><div class="hero-fi">🛒</div><span>Shopping cart & wishlist</span></div>
+      <div class="hero-feature"><div class="hero-fi">⚖️</div><span>Side-by-side product comparison</span></div>
+      <div class="hero-feature"><div class="hero-fi">🗺️</div><span>Interactive floor directory</span></div>
+    </div>
+  </div>
+  <div class="auth-form-area">
+    <div class="auth-form-box">
+      <h1 class="auth-form-title">Welcome back 👋</h1>
+      <p class="auth-form-sub">Sign in to access SuperMall</p>
+      <div class="demo-hint">
+        <strong>🧪 Demo Credentials</strong>
+        Admin: <code>admin@mall.com</code> / <code>Admin@123</code><br/>
+        User: <code>user@mall.com</code> / <code>User@123</code>
+      </div>
+      <form id="login-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="email">Email Address</label>
+          <input type="email" id="email" class="form-control" placeholder="you@example.com" required autocomplete="email"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" class="form-control" placeholder="••••••••" required/>
+        </div>
+        <div id="login-error" style="display:none;color:var(--red);font-size:.83rem;margin-bottom:.75rem"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:.75rem" id="login-btn">Sign In →</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/logger.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script>
+  if (Auth.isLoggedIn()) {
+    window.location.href = Auth.currentUser()?.role === "admin" ? "admin/dashboard.html" : "user/browse.html";
+  }
+  document.getElementById("login-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = document.getElementById("email").value.trim();
+    const pass  = document.getElementById("password").value;
+    const btn   = document.getElementById("login-btn");
+    const err   = document.getElementById("login-error");
+    err.style.display = "none";
+    btn.textContent = "Signing in…"; btn.disabled = true;
+    try {
+      const user = await Auth.login(email, pass);
+      UI.toast(`Welcome, ${user.name}! 🎉`, "success");
+      setTimeout(() => { window.location.href = user.role === "admin" ? "admin/dashboard.html" : "user/browse.html"; }, 700);
+    } catch(e) {
+      err.textContent = e.message; err.style.display = "block";
+      btn.textContent = "Sign In →"; btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

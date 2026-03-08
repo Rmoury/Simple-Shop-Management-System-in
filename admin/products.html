@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Products — SuperMall Admin</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">Super<span>Mall</span></div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html"  class="nav-link"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="shops.html"      class="nav-link"><span class="nav-icon">🏪</span> Shops</a>
+      <a href="products.html"   class="nav-link active"><span class="nav-icon">📦</span> Products</a>
+      <a href="offers.html"     class="nav-link"><span class="nav-icon">🏷️</span> Offers</a>
+      <a href="categories.html" class="nav-link"><span class="nav-icon">🗂️</span> Categories & Floors</a>
+      <a href="reports.html"    class="nav-link"><span class="nav-icon">📈</span> Analytics</a>
+      <a href="../user/browse.html" class="nav-link"><span class="nav-icon">👁️</span> User View</a>
+    </nav>
+  </aside>
+  <div class="main-wrap">
+    <header class="topbar">
+      <span class="topbar-title">Manage Products</span>
+      <div class="topbar-right">
+        <span class="topbar-user" id="nav-user"></span>
+        <button class="btn btn-ghost btn-sm" id="nav-logout">Logout</button>
+      </div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>Products</h1><p>Manage products across all shops.</p></div>
+        <button class="btn btn-primary" onclick="openForm()">+ Add Product</button>
+      </div>
+      <div class="filter-bar">
+        <input type="text" id="q" class="form-control search-box" placeholder="🔍 Search products…" oninput="filter()"/>
+        <select id="f-shop" class="form-control" onchange="filter()"><option value="">All Shops</option></select>
+        <select id="f-cat"  class="form-control" onchange="filter()"><option value="">All Categories</option></select>
+        <select id="f-feat" class="form-control" onchange="filter()"><option value="">All</option><option value="true">⭐ Featured</option></select>
+      </div>
+      <div class="card"><div style="padding:0" id="tbl"></div></div>
+    </main>
+  </div>
+</div>
+
+<div id="modal" style="display:none">
+  <div class="modal-overlay modal-show">
+    <div class="modal-box modal-wide">
+      <div class="modal-header"><h3 class="modal-title" id="modal-title">Add Product</h3><button class="modal-close" onclick="closeForm()">✕</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="eid"/>
+        <div class="form-grid">
+          <div class="form-group form-full"><label class="form-label">Product Name *</label><input id="f-name" class="form-control" required/></div>
+          <div class="form-group"><label class="form-label">Shop *</label><select id="f-shop-sel" class="form-control"></select></div>
+          <div class="form-group"><label class="form-label">Category</label><select id="f-cat-sel" class="form-control"></select></div>
+          <div class="form-group"><label class="form-label">Price (₹) *</label><input id="f-price" class="form-control" type="number" min="0"/></div>
+          <div class="form-group"><label class="form-label">Sale Price (₹)</label><input id="f-dprice" class="form-control" type="number" min="0"/></div>
+          <div class="form-group"><label class="form-label">Stock Quantity</label><input id="f-stock" class="form-control" type="number" min="0" value="0"/></div>
+          <div class="form-group"><label class="form-label">Rating (1-5)</label><input id="f-rating" class="form-control" type="number" min="1" max="5" step="0.1" value="4.0"/></div>
+          <div class="form-group form-full"><label class="form-label">Image URL *</label>
+            <input id="f-image" class="form-control" placeholder="https://images.unsplash.com/photo-…?w=300&q=80"/>
+            <div id="img-preview" style="margin-top:.5rem"></div>
+          </div>
+          <div class="form-group form-full"><label class="form-label">Description</label><textarea id="f-desc" class="form-control" rows="2"></textarea></div>
+          <div class="form-group"><label class="form-label">Tags (comma separated)</label><input id="f-tags" class="form-control" placeholder="laptop, apple"/></div>
+          <div class="form-group"><label class="form-label">Featured?</label>
+            <select id="f-feat-sel" class="form-control"><option value="false">No</option><option value="true">⭐ Yes</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeForm()">Cancel</button>
+        <button class="btn btn-primary" onclick="save()">Save Product</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="../js/logger.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/data-services.js"></script>
+<script>
+if(!Auth.requireAuth("admin")) throw 0;
+Auth.initNav();
+let all=[], shops=[];
+
+document.getElementById("f-image").addEventListener("input",function(){
+  const v=this.value.trim();
+  document.getElementById("img-preview").innerHTML=v?`<img src="${v}" style="height:80px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'"/>`:"";
+});
+
+async function load(){
+  [all, shops] = await Promise.all([ProductService.getAll(), ShopService.getAll()]);
+  render(all);
+  const cats = await CategoryService.getAll();
+  shops.forEach(s=>{
+    document.getElementById("f-shop").innerHTML+=`<option value="${s.id}">${s.name}</option>`;
+    document.getElementById("f-shop-sel").innerHTML+=`<option value="${s.id}" data-name="${s.name}">${s.name}</option>`;
+  });
+  cats.forEach(c=>{
+    document.getElementById("f-cat").innerHTML+=`<option value="${c.name}">${c.name}</option>`;
+    document.getElementById("f-cat-sel").innerHTML+=`<option value="${c.name}">${c.name}</option>`;
+  });
+}
+
+function render(items){
+  UI.buildTable("tbl",
+    [{key:"image",label:"Photo",render:p=>`<div style="width:44px;height:36px;border-radius:6px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center">${p.image?`<img src="${p.image}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📦'"/>`:` <span>📦</span>`}</div>`},
+     {key:"name",label:"Name",render:p=>`<strong>${p.name}</strong>`},
+     {key:"shopName",label:"Shop"},
+     {key:"category",label:"Category"},
+     {key:"price",label:"Price",render:p=>`${UI.currency(p.price)}`},
+     {key:"discountPrice",label:"Sale",render:p=>p.discountPrice?`<strong style="color:var(--orange)">${UI.currency(p.discountPrice)}</strong>`:"—"},
+     {key:"stock",label:"Stock",render:p=>`<span class="${p.stock<5?'badge badge-danger':'badge badge-success'}">${p.stock}</span>`},
+     {key:"featured",label:"⭐",render:p=>p.featured?"⭐":"—"}],
+    items,
+    [{label:"Edit",icon:"✏️",className:"btn-edit",fn:"editProd"},
+     {label:"Delete",icon:"🗑️",className:"btn-delete",fn:"deleteProd"}]
+  );
+}
+
+function filter(){
+  const q=document.getElementById("q").value.toLowerCase();
+  const sh=document.getElementById("f-shop").value;
+  const ca=document.getElementById("f-cat").value;
+  const fe=document.getElementById("f-feat").value;
+  render(all.filter(p=>(!q||p.name.toLowerCase().includes(q))&&(!sh||p.shopId===sh)&&(!ca||p.category===ca)&&(fe===""||String(p.featured)===fe)));
+}
+
+function openForm(id=null){
+  document.getElementById("modal-title").textContent=id?"Edit Product":"Add Product";
+  document.getElementById("eid").value=id||"";
+  if(!id){document.querySelectorAll("#modal .form-control").forEach(e=>e.value="");document.getElementById("img-preview").innerHTML="";document.getElementById("f-rating").value="4.0";}
+  document.getElementById("modal").style.display="block";
+}
+
+async function editProd(id){
+  const p=all.find(x=>x.id===id); if(!p) return;
+  document.getElementById("modal-title").textContent="Edit Product";
+  document.getElementById("eid").value=id;
+  document.getElementById("f-name").value     =p.name||"";
+  document.getElementById("f-shop-sel").value =p.shopId||"";
+  document.getElementById("f-cat-sel").value  =p.category||"";
+  document.getElementById("f-price").value    =p.price||"";
+  document.getElementById("f-dprice").value   =p.discountPrice||"";
+  document.getElementById("f-stock").value    =p.stock||0;
+  document.getElementById("f-rating").value   =p.rating||4.0;
+  document.getElementById("f-image").value    =p.image||"";
+  document.getElementById("f-desc").value     =p.description||"";
+  document.getElementById("f-tags").value     =(p.tags||[]).join(", ");
+  document.getElementById("f-feat-sel").value =String(p.featured||false);
+  document.getElementById("img-preview").innerHTML=p.image?`<img src="${p.image}" style="height:80px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'"/>` :"";
+  document.getElementById("modal").style.display="block";
+}
+
+function closeForm(){ document.getElementById("modal").style.display="none"; }
+
+async function save(){
+  const id=document.getElementById("eid").value;
+  const shopSel=document.getElementById("f-shop-sel");
+  const data={
+    name:        document.getElementById("f-name").value.trim(),
+    shopId:      shopSel.value,
+    shopName:    shopSel.options[shopSel.selectedIndex]?.dataset.name||"",
+    category:    document.getElementById("f-cat-sel").value,
+    price:       Number(document.getElementById("f-price").value)||0,
+    discountPrice:Number(document.getElementById("f-dprice").value)||null,
+    stock:       Number(document.getElementById("f-stock").value)||0,
+    rating:      Number(document.getElementById("f-rating").value)||4.0,
+    image:       document.getElementById("f-image").value.trim(),
+    description: document.getElementById("f-desc").value.trim(),
+    tags:        document.getElementById("f-tags").value.split(",").map(t=>t.trim()).filter(Boolean),
+    featured:    document.getElementById("f-feat-sel").value==="true"
+  };
+  if(!data.name||!data.price){ UI.toast("Name and price required","warning"); return; }
+  try{
+    id ? await ProductService.update(id,data) : await ProductService.create(data);
+    UI.toast(id?"Updated ✅":"Created 🎉","success");
+    closeForm(); load();
+  } catch(e){ UI.toast("Error: "+e.message,"error"); }
+}
+
+function deleteProd(id){
+  UI.confirm("Delete this product?",async()=>{
+    await ProductService.remove(id); UI.toast("Deleted","success"); load();
+  });
+}
+load();
+</script>
+</body>
+</html>

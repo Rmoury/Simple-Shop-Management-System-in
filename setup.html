@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SuperMall — Firebase Setup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0d1b2a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1rem; }
+    .box { background: #1a2d42; border: 1px solid #243b55; border-radius: 12px; padding: 2rem; max-width: 520px; width: 100%; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; color: #f97316; }
+    p  { font-size: 0.87rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    .step { background: #0d1b2a; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; border-left: 3px solid #f97316; }
+    .step-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; color: #fff; }
+    label { display: block; font-size: 0.78rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; margin-top: 0.75rem; }
+    input { width: 100%; padding: 0.6rem 0.9rem; background: #243b55; border: 1px solid #334e68; border-radius: 6px; color: #fff; font-size: 0.9rem; outline: none; }
+    input:focus { border-color: #f97316; }
+    button { width: 100%; margin-top: 1.25rem; padding: 0.75rem; background: #f97316; color: #fff; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer; }
+    button:hover { background: #ea6a0a; }
+    button:disabled { background: #475569; cursor: not-allowed; }
+    #log { margin-top: 1.5rem; background: #0d1b2a; border-radius: 8px; padding: 1rem; font-size: 0.8rem; font-family: monospace; min-height: 60px; white-space: pre-wrap; line-height: 1.7; }
+    .ok  { color: #4ade80; }
+    .err { color: #f87171; }
+    .inf { color: #60a5fa; }
+    .warn { color: #fbbf24; }
+    .divider { border: none; border-top: 1px solid #243b55; margin: 1.5rem 0; }
+  </style>
+</head>
+<body>
+<div class="box">
+  <h1>🔥 SuperMall — Firebase Setup</h1>
+  <p>Run this ONE TIME to create your admin and user accounts in Firebase. Delete this file after setup.</p>
+
+  <div class="step">
+    <div class="step-title">Step 1: Create Admin Account</div>
+    <label>Admin Email</label>
+    <input id="admin-email" type="email" value="admin@mall.com" />
+    <label>Admin Password (min 6 chars)</label>
+    <input id="admin-pass" type="password" value="Admin@123" />
+    <label>Admin Display Name</label>
+    <input id="admin-name" type="text" value="Mall Admin" />
+  </div>
+
+  <div class="step">
+    <div class="step-title">Step 2: Create User Account</div>
+    <label>User Email</label>
+    <input id="user-email" type="email" value="user@mall.com" />
+    <label>User Password (min 6 chars)</label>
+    <input id="user-pass" type="password" value="User@123" />
+    <label>User Display Name</label>
+    <input id="user-name" type="text" value="Shopper" />
+  </div>
+
+  <button id="setup-btn" onclick="runSetup()">🚀 Create Accounts in Firebase</button>
+
+  <hr class="divider" />
+
+  <div id="log">Waiting to start...</div>
+</div>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+// ── Your Firebase Config ───────────────────────────────────────
+const firebaseConfig = {
+  apiKey:            "AIzaSyA_L1jIBB_BtLLuCPl5--FPLlmKQIKKKJY",
+  authDomain:        "supermall-3663d.firebaseapp.com",
+  projectId:         "supermall-3663d",
+  storageBucket:     "supermall-3663d.firebasestorage.app",
+  messagingSenderId: "360488758638",
+  appId:             "1:360488758638:web:067994473bf8302a46257f"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+const logEl = document.getElementById("log");
+
+function log(msg, type = "inf") {
+  logEl.innerHTML += `<span class="${type}">${msg}\n</span>`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function createUserAndProfile(email, password, name, role) {
+  log(`\n📌 Creating ${role}: ${email}...`, "inf");
+
+  try {
+    // Create Auth account
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
+    const uid  = cred.user.uid;
+    log(`  ✅ Auth account created (uid: ${uid})`, "ok");
+
+    // Save profile + role to Firestore
+    await db.collection("users").doc(uid).set({
+      uid,
+      email,
+      name,
+      role,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    log(`  ✅ Firestore profile saved (role: ${role})`, "ok");
+
+    // Sign out so we can create next user
+    await auth.signOut();
+    log(`  ✅ Signed out`, "ok");
+
+    return { uid, email, role };
+
+  } catch (err) {
+    if (err.code === "auth/email-already-in-use") {
+      log(`  ⚠️  ${email} already exists in Auth — skipping creation`, "warn");
+      log(`  ℹ️  Checking if Firestore profile exists...`, "inf");
+
+      // Try to find existing user and update/create their Firestore doc
+      try {
+        // We can't get UID without signing in — just note it
+        log(`  ⚠️  Please manually check Firestore 'users' collection for this email`, "warn");
+        return null;
+      } catch (e) {
+        log(`  ❌ Could not update profile: ${e.message}`, "err");
+        return null;
+      }
+    }
+    log(`  ❌ Error: ${err.message}`, "err");
+    return null;
+  }
+}
+
+async function runSetup() {
+  const btn = document.getElementById("setup-btn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Setting up...";
+  logEl.innerHTML = "";
+
+  log("🔥 Connecting to Firebase...", "inf");
+
+  const adminEmail = document.getElementById("admin-email").value.trim();
+  const adminPass  = document.getElementById("admin-pass").value;
+  const adminName  = document.getElementById("admin-name").value.trim();
+
+  const userEmail  = document.getElementById("user-email").value.trim();
+  const userPass   = document.getElementById("user-pass").value;
+  const userName   = document.getElementById("user-name").value.trim();
+
+  // Validate
+  if (!adminEmail || !adminPass || !userEmail || !userPass) {
+    log("❌ All fields are required.", "err");
+    btn.disabled = false; btn.textContent = "🚀 Create Accounts in Firebase";
+    return;
+  }
+  if (adminPass.length < 6 || userPass.length < 6) {
+    log("❌ Passwords must be at least 6 characters.", "err");
+    btn.disabled = false; btn.textContent = "🚀 Create Accounts in Firebase";
+    return;
+  }
+
+  const admin = await createUserAndProfile(adminEmail, adminPass, adminName, "admin");
+  const user  = await createUserAndProfile(userEmail,  userPass,  userName,  "user");
+
+  log("\n════════════════════════════════", "inf");
+
+  if (admin || user) {
+    log("✅ SETUP COMPLETE!", "ok");
+    log("\nYou can now login to SuperMall with:", "inf");
+    log(`  Admin: ${adminEmail} / ${adminPass}`, "ok");
+    log(`  User:  ${userEmail} / ${userPass}`, "ok");
+    log("\n⚠️  DELETE this setup.html file now!", "warn");
+    log("⚠️  Then open index.html and login.", "warn");
+    btn.textContent = "✅ Done! Delete this file now.";
+  } else {
+    log("\n⚠️  Setup had issues — check messages above.", "warn");
+    btn.disabled = false;
+    btn.textContent = "🔁 Try Again";
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Browse — SuperMall</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="user-nav">
+  <div class="user-nav-logo">Super<span>Mall</span></div>
+  <div class="user-nav-links">
+    <a href="browse.html"      class="nav-pill active">🏬 Browse</a>
+    <a href="shops.html"       class="nav-pill">🏪 Shops</a>
+    <a href="compare.html"     class="nav-pill">⚖️ Compare</a>
+    <a href="wishlist.html"    class="nav-pill">❤️ Wishlist</a>
+    <a href="floormap.html"    class="nav-pill">🗺️ Floor Map</a>
+    <div class="cart-btn" onclick="toggleCart()">
+      🛒 Cart
+      <span class="cart-badge" id="cart-badge-nav">0</span>
+    </div>
+    <span class="topbar-user" id="nav-user" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border-color:rgba(255,255,255,.15);font-size:.78rem"></span>
+    <button class="btn btn-ghost btn-sm" id="nav-logout" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2)">Logout</button>
+  </div>
+</nav>
+
+<!-- Hero -->
+<div class="hero-section">
+  <h1>Welcome to <span>SuperMall</span></h1>
+  <p>Discover amazing products from 100+ shops — all in one place.</p>
+  <div class="hero-search">
+    <input id="hero-q" type="text" placeholder="Search products, shops, brands…"/>
+    <button onclick="doSearch()">Search</button>
+  </div>
+</div>
+
+<!-- Body -->
+<div class="browse-body">
+
+  <!-- Offers Strip -->
+  <div class="offers-strip">
+    <h2>🔥 Hot Offers Right Now</h2>
+    <div class="offers-scroll" id="offers-strip"></div>
+  </div>
+
+  <!-- Category Chips -->
+  <div class="sec-title">Shop by Category</div>
+  <div class="category-chips" id="cat-chips">
+    <span class="chip active" onclick="filterCat(this,'')">All</span>
+  </div>
+
+  <!-- Sort + Count -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;flex-wrap:wrap;gap:.5rem">
+    <div class="sec-title" id="sec-label" style="margin:0">All Products</div>
+    <select id="sort-sel" class="form-control" style="max-width:180px" onchange="applySort()">
+      <option value="">Sort: Default</option>
+      <option value="price-asc">Price: Low → High</option>
+      <option value="price-desc">Price: High → Low</option>
+      <option value="rating">Top Rated</option>
+      <option value="discount">Best Discount</option>
+    </select>
+  </div>
+
+  <div id="products-wrap"></div>
+</div>
+
+<!-- Cart Drawer -->
+<div class="cart-overlay" id="cart-overlay" onclick="handleCartOverlayClick(event)">
+  <div class="cart-drawer">
+    <div class="cart-head">
+      <h3>🛒 Your Cart</h3>
+      <button class="cart-close" onclick="toggleCart()">✕</button>
+    </div>
+    <div class="cart-items" id="cart-items"></div>
+    <div class="cart-foot" id="cart-foot" style="display:none">
+      <div class="cart-total">
+        <span class="cart-total-label">Total</span>
+        <span class="cart-total-val" id="cart-total-val"></span>
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="checkout()">Proceed to Checkout →</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="../js/logger.js"></script>
+<script src="../js/firebase-config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/data-services.js"></script>
+<script>
+if(!Auth.requireAuth()) throw 0;
+Auth.initNav();
+UI.updateCartBadge();
+Logger.info("browse","Page loaded");
+
+let allProds=[], filtered=[];
+let activeCat="";
+
+// ── Product Card ──────────────────────────────────────────
+function productCard(p){
+  const sp  = p.discountPrice||p.price;
+  const pct = p.discountPrice&&p.price>p.discountPrice?Math.round((1-p.discountPrice/p.price)*100):0;
+  const wl  = WishlistService.isWishlisted(p.id);
+  return `
+    <div class="product-card">
+      <div class="product-card-img">
+        ${p.featured?`<span class="featured-badge">⭐ Featured</span>`:""}
+        ${p.image
+          ?`<img src="${p.image}" alt="${p.name}" class="prod-img" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+            <div class="img-placeholder" style="display:none">🛍️</div>`
+          :`<div class="img-placeholder">🛍️</div>`}
+      </div>
+      <div class="product-card-body">
+        <div class="product-card-name" title="${p.name}">${p.name}</div>
+        <div class="product-card-shop">🏪 ${p.shopName||"—"}</div>
+        <div style="margin-bottom:.3rem">${UI.stars(p.rating||4.0)} <span style="font-size:.7rem;color:var(--text-light)">(${p.reviewCount||0})</span></div>
+        <div class="product-card-price">
+          <span class="price-now">${UI.currency(sp)}</span>
+          ${p.discountPrice?`<span class="price-was">${UI.currency(p.price)}</span>`:""}
+          ${pct>0?`<span class="price-save">${pct}% OFF</span>`:""}
+        </div>
+        <div class="card-actions">
+          <button class="btn-cart" onclick="addToCart('${p.id}',event)">🛒 Add to Cart</button>
+          <button class="btn-wish ${wl?'active':''}" id="wl-${p.id}" onclick="toggleWish('${p.id}',event)" title="Wishlist">${wl?"❤️":"🤍"}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Load ──────────────────────────────────────────────────
+async function load(){
+  document.getElementById("products-wrap").innerHTML=`<div class="loader-wrap"><div class="loader"></div></div>`;
+  const [prods, offers, cats] = await Promise.all([ProductService.getAll(), OfferService.getActive(), CategoryService.getAll()]);
+  allProds = prods; filtered = prods;
+
+  // Offers strip
+  document.getElementById("offers-strip").innerHTML = offers.length
+    ? offers.map(o=>`
+        <div class="offer-card" style="cursor:pointer" onclick="location.href='shops.html?id=${o.shopId}'">
+          <div class="offer-disc">${o.discount} OFF</div>
+          <div class="offer-title">${o.title}</div>
+          <div class="offer-shop">${o.shopName}</div>
+          <span class="offer-code">${o.code||"Auto Applied"}</span>
+        </div>`).join("")
+    : "<p style='color:rgba(255,255,255,.4);font-size:.83rem'>No active offers.</p>";
+
+  // Category chips
+  const chips = document.getElementById("cat-chips");
+  cats.forEach(c=>{
+    const s = document.createElement("span");
+    s.className = "chip"; s.textContent = `${c.icon||""} ${c.name}`;
+    s.onclick = function(){ filterCat(this, c.name); };
+    chips.appendChild(s);
+  });
+
+  renderProducts(prods);
+}
+
+function renderProducts(items){
+  document.getElementById("sec-label").textContent = `${activeCat||"All Products"} (${items.length})`;
+  if(!items.length){ document.getElementById("products-wrap").innerHTML=`<div class="empty-state"><span>🔍</span><p>No products found.</p></div>`; return; }
+  document.getElementById("products-wrap").innerHTML=`<div class="card-grid">${items.map(productCard).join("")}</div>`;
+}
+
+function filterCat(el, cat){
+  document.querySelectorAll(".chip").forEach(c=>c.classList.remove("active"));
+  el.classList.add("active"); activeCat=cat;
+  filtered = cat ? allProds.filter(p=>p.category===cat) : allProds;
+  applySort();
+  Logger.info("browse","Category filter",{cat});
+}
+
+function doSearch(){
+  const q = document.getElementById("hero-q").value.trim().toLowerCase();
+  if(!q){ filtered=allProds; renderProducts(filtered); return; }
+  filtered = allProds.filter(p=>p.name.toLowerCase().includes(q)||(p.shopName||"").toLowerCase().includes(q)||(p.category||"").toLowerCase().includes(q)||(p.tags||[]).some(t=>t.includes(q)));
+  activeCat = `"${q}"`;
+  renderProducts(filtered);
+  Logger.info("browse","Search",{q,results:filtered.length});
+}
+
+function applySort(){
+  const s = document.getElementById("sort-sel").value;
+  let items = [...filtered];
+  if(s==="price-asc")  items.sort((a,b)=>(a.discountPrice||a.price)-(b.discountPrice||b.price));
+  if(s==="price-desc") items.sort((a,b)=>(b.discountPrice||b.price)-(a.discountPrice||a.price));
+  if(s==="rating")     items.sort((a,b)=>(b.rating||0)-(a.rating||0));
+  if(s==="discount")   items.sort((a,b)=>{ const da=a.price>0?(a.price-(a.discountPrice||a.price))/a.price:0; const db=b.price>0?(b.price-(b.discountPrice||b.price))/b.price:0; return db-da; });
+  renderProducts(items);
+}
+
+// ── Cart ──────────────────────────────────────────────────
+async function addToCart(id, e){
+  e?.stopPropagation();
+  const p = allProds.find(x=>x.id===id); if(!p) return;
+  CartService.add(p);
+  UI.toast(`🛒 <strong>${p.name}</strong> added to cart!`,"success");
+  renderCart();
+  Logger.info("cart","add",{name:p.name});
+}
+
+function toggleCart(){
+  document.getElementById("cart-overlay").classList.toggle("open");
+  renderCart();
+}
+
+function handleCartOverlayClick(e){
+  if(e.target===document.getElementById("cart-overlay")) toggleCart();
+}
+
+function renderCart(){
+  const items = CartService.getAll();
+  const el    = document.getElementById("cart-items");
+  const foot  = document.getElementById("cart-foot");
+  if(!items.length){
+    el.innerHTML=`<div class="cart-empty"><span>🛒</span><p>Your cart is empty</p><a href="browse.html" style="color:var(--orange);font-size:.83rem">Start shopping →</a></div>`;
+    foot.style.display="none"; return;
+  }
+  foot.style.display="block";
+  document.getElementById("cart-total-val").textContent = UI.currency(CartService.getTotal());
+  el.innerHTML = items.map(i=>`
+    <div class="cart-item">
+      <div class="cart-item-img">
+        ${i.image?`<img src="${i.image}" onerror="this.style.display='none'"/>`:"🛍️"}
+      </div>
+      <div class="cart-item-info">
+        <div class="cart-item-name">${i.name}</div>
+        <div class="cart-item-shop">${i.shopName||""}</div>
+        <div class="cart-item-price">${UI.currency(i.price)}</div>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="changeQty('${i.id}',-1)">−</button>
+          <span class="qty-num">${i.qty}</span>
+          <button class="qty-btn" onclick="changeQty('${i.id}',1)">+</button>
+        </div>
+      </div>
+      <button class="cart-remove" onclick="removeCart('${i.id}')">🗑️</button>
+    </div>`).join("");
+}
+
+function changeQty(id, delta){
+  const item = CartService.getAll().find(i=>i.id===id);
+  if(item) CartService.updateQty(id, item.qty+delta);
+  renderCart();
+}
+function removeCart(id){ CartService.remove(id); renderCart(); UI.toast("Removed from cart","info"); }
+function checkout(){ UI.toast("🎉 Order placed successfully! (Demo mode — no real transaction)","success"); CartService.clear(); renderCart(); }
+
+// ── Wishlist ──────────────────────────────────────────────
+function toggleWish(id, e){
+  e?.stopPropagation();
+  const p = allProds.find(x=>x.id===id); if(!p) return;
+  const added = WishlistService.toggle(p);
+  const btn   = document.getElementById(`wl-${id}`);
+  if(btn){ btn.textContent=added?"❤️":"🤍"; btn.classList.toggle("active",added); }
+  UI.toast(added?`❤️ Added to wishlist`:`Removed from wishlist`, added?"success":"info");
+}
+
+document.getElementById("hero-q").addEventListener("keydown",e=>{ if(e.key==="Enter") doSearch(); });
+load();
+</script>
+</body>
+</html>
